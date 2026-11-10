@@ -8,7 +8,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 RES = ROOT / 'android/app/src/main/res'
-BG_IN, BG_OUT = (255, 198, 46), (232, 65, 47)
+TOL = int(sys.argv[2]) if len(sys.argv) > 2 else 42   # background colour tolerance
+BG_IN, BG_OUT = (255, 210, 90), (214, 52, 44)
 INK = (43, 24, 64)
 
 
@@ -26,7 +27,9 @@ def cutout(img):
             continue
         seen[y * w + x] = 1
         r, g, b, _ = px[x, y]
-        if abs(r - ref[0]) + abs(g - ref[1]) + abs(b - ref[2]) > 42 or max(r, g, b) - min(r, g, b) > 18:
+        if abs(r - ref[0]) + abs(g - ref[1]) + abs(b - ref[2]) > TOL or max(r, g, b) - min(r, g, b) > 18:
+            continue
+        if max(r, g, b) > max(ref) + 10:   # brighter than the backdrop: white clothes / hat, keep it
             continue
         px[x, y] = (r, g, b, 0)
         stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
@@ -37,11 +40,18 @@ def cutout(img):
             if al and abs(r - ref[0]) + abs(g - ref[1]) + abs(b - ref[2]) < 30 and max(r, g, b) - min(r, g, b) < 12:
                 px[x, y] = (r, g, b, 0)
     # floor shadow under the shoes: light, unsaturated pixels in the bottom rows
-    for y in range(int(h * 0.88), h):
+    for y in range(int(h * 0.85), h):
         for x in range(w):
             r, g, b, al = px[x, y]
             if al and max(r, g, b) - min(r, g, b) < 22 and min(r, g, b) > 105 and max(r, g, b) < 228:
                 px[x, y] = (r, g, b, 0)
+    a = img.getchannel('A')
+    # close small bites along the soft white hat edge (top part only): dilate then erode the mask
+    top = int(h * 0.3)
+    hat = a.crop((0, 0, w, top)).filter(ImageFilter.MaxFilter(31)).filter(ImageFilter.MinFilter(31))
+    a.paste(hat, (0, 0))
+    a.paste(0, (0, 0, w, 6))   # the filter smears the image border
+    img.putalpha(a)
     a = img.getchannel('A').filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
     img.putalpha(a)
     return img.crop(img.getbbox())
@@ -61,13 +71,13 @@ def radial(size):
 
 def icon(chef, size):
     base = radial(size).convert('RGBA')
-    head = chef.crop((0, 0, chef.width, int(chef.height * 0.56)))
-    s = size * 0.98 / head.width
+    head = chef.crop((0, 0, chef.width, int(chef.height * 0.66)))
+    s = min(size * 0.98 / head.width, size * 0.9 / head.height)
     head = head.resize((int(head.width * s), int(head.height * s)), Image.LANCZOS)
     shadow = Image.new('RGBA', head.size, (0, 0, 0, 0))
     shadow.putalpha(head.getchannel('A').point(lambda v: v * 0.35))
-    base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(size / 60)), ((size - head.width) // 2, int(size * 0.14)))
-    base.alpha_composite(head, ((size - head.width) // 2, int(size * 0.1)))
+    base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(size / 60)), ((size - head.width) // 2, size - head.height + int(size * 0.03)))
+    base.alpha_composite(head, ((size - head.width) // 2, size - head.height))
     return base
 
 
