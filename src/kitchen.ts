@@ -34,6 +34,8 @@ export function bounce(obj: THREE.Object3D) {
 /** Flying item animation (from its position to another, then callback) */
 const flights: { obj: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number; arc: number; done?: () => void }[] = [];
 function fly(obj: THREE.Object3D, to: THREE.Vector3, dur = 0.3, arc = 0.25, done?: () => void) {
+  // a new move replaces any move still running on the same object
+  for (let i = flights.length - 1; i >= 0; i--) if (flights[i].obj === obj) flights.splice(i, 1);
   flights.push({ obj, from: obj.position.clone(), to, t: 0, dur, arc, done });
 }
 
@@ -160,6 +162,7 @@ export class Kitchen {
       group.add(brd);
       group.position.copy(at(LAYOUT.boards[j]));
       this.stage.scene.add(group);
+      group.updateMatrixWorld(true);
       // move the pizza onto the board (keep its world position, then fly)
       const world = b.mesh.position.clone();
       this.stage.scene.remove(b.mesh);
